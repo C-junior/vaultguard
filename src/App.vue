@@ -1,11 +1,31 @@
 <template>
-  <div class="min-h-screen bg-gray-900 text-gray-100 p-4 md:p-8">
+ <div class="min-h-screen bg-gray-900 text-gray-100 p-4 md:p-8">
     <header class="mb-8 text-center">
-      <h1 class="text-3xl md:text-4xl font-bold mb-2 text-cyan-400">VaultGuard</h1>
-      <p class="text-gray-400">Your digital security vault</p>
+      <h1 class="text-3xl md:text-4xl font-bold mb-2 text-cyan-400">SecureShell</h1>
+      <p class="text-gray-400">Your secure password vault</p>
+      
+      <div class="flex justify-center gap-4 mt-4">
+        <button 
+          v-if="!user"
+          @click="signInWithGoogle"
+          class="bg-cyan-600 hover:bg-cyan-500 px-6 py-2 rounded-lg flex items-center transition-all"
+        >
+          Sign in with Google
+        </button>
+        <div v-else class="flex items-center gap-4">
+          <img :src="user.photoURL" class="h-10 w-10 rounded-full" />
+          <span>{{ user.displayName }}</span>
+          <button 
+            @click="signOut"
+            class="bg-red-600 hover:bg-red-500 px-6 py-2 rounded-lg"
+          >
+            Sign Out
+          </button>
+        </div>
+      </div>
     </header>
 
-    <main class="max-w-2xl mx-auto">
+    <main v-if="user" class="max-w-2xl mx-auto">
       <!-- Entries List -->
       <div class="space-y-4">
         <div 
@@ -222,109 +242,142 @@
     </div>
   </div>
     </main>
+      <!-- Loading overlay -->
+      <div v-if="loading" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+      <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-cyan-500"></div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, onMounted, reactive } from 'vue'
+import { useAuth } from './composables/useAuth'
 import { 
-  PlusIcon, 
-  TrashIcon, 
-  EyeIcon, 
-  EyeSlashIcon, 
-  ClipboardDocumentIcon, 
-  ChevronDownIcon,
-  PencilIcon 
+  auth, db, provider, signInWithPopup, 
+  collection, doc, getDocs, setDoc, deleteDoc 
+} from './firebase'
+import { 
+  PlusIcon, TrashIcon, EyeIcon, EyeSlashIcon, ClipboardDocumentIcon, ChevronDownIcon, PencilIcon 
 } from '@heroicons/vue/24/outline'
 
+const { user } = useAuth()
+const loading = ref(true)
+const entries = ref([])
 const showAddForm = ref(false)
-const entries = ref(JSON.parse(localStorage.getItem('vaultguard-entries')) || [])
-
 const newEntry = reactive({
   siteName: '',
   description: '',
   password: '',
-  category: '',
-  showPassword: false,
-  isOpen: false
+  category: ''
 })
-
-// Add these state variables
 const showEditForm = ref(false)
 const showEditPassword = ref(false)
 const editingIndex = ref(null)
 const editedEntry = reactive({
+  id: '',
   siteName: '',
   description: '',
   password: '',
-  category: '',
-  showPassword: false,
-  isOpen: false
+  category: ''
 })
 
-// Add these methods
-function openEdit(index) {
+// Firebase operations
+const signInWithGoogle = async () => {
+  try {
+    loading.value = true
+    await signInWithPopup(auth, provider)
+  } finally {
+    loading.value = false
+  }
+}
+
+const signOut = async () => {
+  await auth.signOut()
+}
+
+const loadEntries = async () => {
+  if (!user.value) return
+  const querySnapshot = await getDocs(collection(db, 'users', user.value.uid, 'entries'))
+  entries.value = querySnapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  }))
+}
+
+// Add this function here
+function toggleEntry(index) {
+  entries.value[index].isOpen = !entries.value[index].isOpen
+}
+function maskedPassword(pwd) {
+  return '*'.repeat(pwd.length)
+}
+function copyToClipboard(text) {
+  navigator.clipboard.writeText(text)
+}
+function togglePasswordVisibility(index) {
+  entries.value[index].showPassword = !entries.value[index].showPassword
+}
+const addEntry = async () => {
+  try {
+    const entryRef = doc(collection(db, 'users', user.value.uid, 'entries'))
+    await setDoc(entryRef, {
+      ...newEntry,
+      createdAt: new Date().toISOString(),
+      showPassword: false,
+      isOpen: false
+    })
+    await loadEntries()
+    
+    // Reset form and close modal
+    Object.assign(newEntry, {
+      siteName: '',
+      description: '',
+      password: '',
+      category: ''
+    })
+    showAddForm.value = false
+  } catch (error) {
+    console.error('Error adding entry:', error)
+  }
+}
+
+const openEdit = (index) => {
   Object.assign(editedEntry, entries.value[index])
   editingIndex.value = index
   showEditForm.value = true
 }
 
-function saveEdit() {
-  if (editingIndex.value !== null) {
-    entries.value[editingIndex.value] = { ...editedEntry }
-    localStorage.setItem('vaultguard-entries', JSON.stringify(entries.value))
-    cancelEdit()
-  }
-}
-
-function cancelEdit() {
+const cancelEdit = () => {
   showEditForm.value = false
   editingIndex.value = null
   Object.assign(editedEntry, {
+    id: '',
     siteName: '',
     description: '',
     password: '',
-    category: '',
-    showPassword: false,
-    isOpen: false
+    category: ''
   })
 }
-function maskedPassword(pwd) {
-  return '*'.repeat(pwd.length)
+
+const deleteEntry = async (index) => {
+  await deleteDoc(doc(db, 'users', user.value.uid, 'entries', entries.value[index].id))
+  await loadEntries()
 }
 
-function togglePasswordVisibility(index) {
-  entries.value[index].showPassword = !entries.value[index].showPassword
+const saveEdit = async () => {
+  const entryRef = doc(db, 'users', user.value.uid, 'entries', editedEntry.id)
+  await setDoc(entryRef, editedEntry)
+  await loadEntries()
+  showEditForm.value = false
 }
 
-function toggleEntry(index) {
-  entries.value[index].isOpen = !entries.value[index].isOpen
-}
-
-function copyToClipboard(text) {
-  navigator.clipboard.writeText(text)
-}
-
-function addEntry() {
-  entries.value.push({ 
-    ...newEntry,
-    isOpen: false,
-    showPassword: false
+// Initialize entries when user logs in
+onMounted(async () => {
+  auth.onAuthStateChanged(async (user) => {
+    if (user) await loadEntries()
+    loading.value = false
   })
-  localStorage.setItem('vaultguard-entries', JSON.stringify(entries.value))
-  Object.assign(newEntry, { 
-    siteName: '', 
-    description: '', 
-    password: '', 
-    category: '' 
-  })
-  showAddForm.value = false
-}
-
-function deleteEntry(index) {
-  entries.value.splice(index, 1)
-  localStorage.setItem('vaultguard-entries', JSON.stringify(entries.value))
-}
+})
 </script>
 
 <style>
