@@ -54,7 +54,7 @@
       </div>
 
       <!-- Action Buttons -->
-      <div class="flex gap-3 mt-4">
+      <div class="flex justify-center gap-3 mt-4">
         <button 
           @click.stop="copyToClipboard(entry.password)"
           class="text-gray-400 hover:text-cyan-400"
