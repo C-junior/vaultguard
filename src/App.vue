@@ -1,7 +1,11 @@
 <template>
  <div class="min-h-screen bg-gray-900 text-gray-100 p-4 md:p-8">
     <header class="mb-8 text-center">
-      <h1 class="text-3xl md:text-4xl font-bold mb-2 text-cyan-400">SecureShell</h1>
+      <div class="flex items-center justify-center gap-2">
+        <!-- <img width="64" src="./assets/logo.png" alt=""> -->
+        <img class="filter saturate-300" src="./assets/text_secureshell.png" alt="">
+        <!-- <h1 class="text-3xl md:text-4xl font-bold mb-2 text-cyan-400">SecureShell</h1> -->
+      </div>      
       <p class="text-gray-400">Your secure password vault</p>
       
       <div class="flex justify-center gap-4 mt-4">
